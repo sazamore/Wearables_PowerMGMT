@@ -1,46 +1,50 @@
 /*
-  Nano 33 BLE - Deep Sleep with Button Wake + Proximity Sensor (mbed native)
+  Nano 33 BLE - Light Sleep with Button Wake + Temp/Humidity Sensor
   
-  This code demonstrates deep sleep with external interrupt wake:
+  This code demonstrates light sleep with external interrupt wake:
   - Wakes up and turns GREEN LED on for 2 seconds
-  - Reads proximity sensor every 100ms while awake
-  - Goes to DEEP SLEEP (LED off) until button is pressed
+  - Reads temperature and humidity every 100ms while awake
+  - Goes to LIGHT SLEEP (LED off) until button is pressed
   - Button on D2 wakes the board
   - Repeats indefinitely
   
   Hardware: 
   - Arduino Nano 33 BLE
   - Button connected to D2 and GND (internal pullup used)
-  - Onboard APDS9960 proximity sensor
+  - Onboard HTS221 temperature & humidity sensor
   
   Libraries Required (install via Library Manager):
-  - Arduino_APDS9960
+  - Arduino_HTS221
   
-  Note: Uses built-in mbed sleep functions instead of ArduinoLowPower library
+  Note: This uses LIGHT SLEEP (not deep sleep/SYSTEMOFF) which:
+  - Maintains RAM and continues from where it left off
+  - Uses less power than fully awake but more than SYSTEMOFF
+  - Wakes quickly and reliably on button press
+  - Perfect for student demonstrations
   
   DEMO TEACHING POINT:
   =====================
   When viewing Serial Plotter, students will notice:
-  - Proximity readings appear only during the 2-second AWAKE period
-  - NO readings during deep sleep (even if you wave your hand)
+  - Temperature and humidity readings appear only during the 2-second AWAKE period
+  - NO readings during sleep (even if you breathe on the sensor)
+  - Button instantly wakes the board (no reset)
   - This demonstrates that peripherals are powered down during sleep
   - Power savings come at the cost of sensor functionality
-  - Real-world applications must balance power vs. responsiveness
   
-  Try this: Wave your hand over the board during sleep - nothing happens!
-            Press button to wake, then wave hand - sensor responds!
+  Try this: Breathe on the board during sleep - nothing happens!
+            Press button to wake, then breathe on sensor - temp/humidity respond!
 */
 
 #include <mbed.h>
-#include <Arduino_APDS9960.h>
+#include <Arduino_HTS221.h>
 
 using namespace mbed;
 using namespace rtos;
 
 // RGB LED pins on Nano 33 BLE (Active LOW - LOW=on, HIGH=off)
-// #define LED_RED    22
-// #define LED_GREEN  23
-// #define LED_BLUE   24
+#define LED_RED    22
+#define LED_GREEN  23
+#define LED_BLUE   24
 
 // Button pin
 #define BUTTON_PIN 2
@@ -76,16 +80,16 @@ void setup() {
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonPressed, FALLING);
   
-  // Initialize proximity sensor
-  if (!APDS.begin()) {
-    Serial.println("Error initializing APDS9960 sensor!");
+  // Initialize temperature & humidity sensor
+  if (!HTS.begin()) {
+    Serial.println("Error initializing HTS221 sensor!");
     while (1); // Halt if sensor fails
   }
   
-  Serial.println("Deep Sleep Button Wake + Proximity Demo (mbed native)");
+  Serial.println("Light Sleep Button Wake + Temp/Humidity Demo (mbed native)");
   Serial.println("Press button on D2 to wake from sleep");
-  Serial.println("Open Serial Plotter to see proximity data");
-  Serial.println("-------------------------------------------------------");
+  Serial.println("Open Serial Plotter to see temperature and humidity data");
+  Serial.println("------------------------------------------------------------");
   delay(2000); // Give time to open Serial Plotter
 }
 
@@ -97,30 +101,31 @@ void loop() {
   // Turn GREEN LED on (LOW = on)
   digitalWrite(LED_GREEN, LOW);
   
-  // Read proximity sensor multiple times while awake
+  // Read temp & humidity sensor multiple times while awake
   unsigned long awakeStart = millis();
   while (millis() - awakeStart < AWAKE_TIME) {
     
-    // Check if proximity data is available
-    if (APDS.proximityAvailable()) {
-      int proximity = APDS.readProximity();
-      
-      // Format for Serial Plotter (label:value)
-      Serial.print("Proximity:");
-      Serial.println(proximity);
-    }
+    // Read temperature and humidity
+    float temperature = HTS.readTemperature();
+    float humidity = HTS.readHumidity();
+    
+    // Format for Serial Plotter (label:value label:value)
+    Serial.print("Temperature:");
+    Serial.print(temperature);
+    Serial.print(",Humidity:");
+    Serial.println(humidity);
     
     delay(SAMPLE_RATE);
   }
   
-  // ===== DEEP SLEEP PERIOD =====
+  // ===== SLEEP PERIOD =====
   Serial.println("Going to sleep - sensor will NOT respond!");
   Serial.flush(); // Ensure message is sent before sleeping
   
   // Turn GREEN LED off (HIGH = off)
   digitalWrite(LED_GREEN, HIGH);
   
-  // Enter deep sleep - will wake on button interrupt
+  // Enter light sleep - will wake on button interrupt
   // Using mbed sleep function with interrupt wake capability
   sleep();
   
